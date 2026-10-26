@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Obras de implantação 2026</title>
+<style>/*{{LEAFLET_CSS}}*/</style>
+<style>/*{{CSS}}*/</style>
+</head>
+<body class="carregando">
+<header class="topo">
+  <div class="topo-in">
+    <div>
+      <h1>Obras de implantação 2026</h1>
+      <p class="sub">Controle de qualidade · Complexo Paraopeba</p>
+    </div>
+    <div class="topo-acoes">
+      <p class="fonte" id="fonte">Carregando a base…</p>
+      <button type="button" class="btn btn-claro" id="btn-carregar" title="Selecione ou arraste o .xlsx baixado do SharePoint">Atualizar com nova planilha</button>
+      <input type="file" id="arquivo" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="filtros" aria-label="Filtros">
+    <div class="filtro"><span id="f-reg-l">Regional</span><div class="seg" id="f-regional" role="group" aria-labelledby="f-reg-l"></div></div>
+    <div class="filtro"><span id="f-st-l">Status da obra</span><div class="seg" id="f-status" role="group" aria-labelledby="f-st-l"></div></div>
+    <div class="filtro"><span id="f-em-l">Emergencial</span><div class="seg" id="f-emerg" role="group" aria-labelledby="f-em-l"></div></div>
+    <label class="filtro"><span>Prazo</span><select id="f-prazo"></select></label>
+    <label class="filtro"><span>Gestor Vale</span><select id="f-gestor"></select></label>
+    <label class="filtro"><span>Empresa</span><select id="f-empresa"></select></label>
+    <label class="filtro"><span>Buscar</span><input type="search" id="f-busca" placeholder="TAP, projeto ou observação"></label>
+  </section>
+  <div class="ativos" id="ativos" aria-live="polite"></div>
+
+  <section class="kpis" id="kpis" aria-label="Indicadores"></section>
+
+  <section class="grade">
+    <article class="card span-8 card-mapa">
+      <header>
+        <h2>Mapa de obras por site</h2>
+        <p class="desc">Tamanho da bolha = quantidade de obras no site · fatia vermelha = emergenciais, verde = não emergenciais. Clique em um site para filtrar o painel.</p>
+      </header>
+      <div class="mapa-wrap"><div id="mapa" role="region" aria-label="Mapa dos sites"></div></div>
+    </article>
+
+    <div class="coluna span-4">
+      <article class="card">
+        <header>
+          <h2>Obras por site</h2>
+          <p class="desc">Por status da obra · clique para filtrar</p>
+        </header>
+        <ul class="legenda" id="leg-status"></ul>
+        <div class="barras" id="graf-sites"></div>
+      </article>
+      <article class="card">
+        <header>
+          <h2>Radar de prazos</h2>
+          <p class="desc">Atrasadas, vencendo em até 30 dias e obras a iniciar com prazo curto</p>
+        </header>
+        <ul class="radar" id="radar"></ul>
+      </article>
+    </div>
+
+    <article class="card span-12">
+      <header>
+        <h2>Linha do tempo das conclusões</h2>
+        <p class="desc">Cada ponto é uma obra na data de conclusão prevista ou realizada. Passe o mouse para ver detalhes; clique para localizar na lista.</p>
+      </header>
+      <ul class="legenda">
+        <li><span class="pt" style="background:var(--emerg)"></span>Emergencial</li>
+        <li><span class="pt" style="background:var(--nao-emerg)"></span>Não emergencial</li>
+        <li><span class="pt" style="background:var(--verde-escuro)"></span>Ponto cheio = em execução ou a iniciar</li>
+        <li><span class="pt-oco" style="border-color:var(--verde-escuro)"></span>Ponto vazado = concluída</li>
+        <li><span class="sw" style="background:var(--amarelo-claro)"></span>Próximos 30 dias</li>
+      </ul>
+      <div id="timeline"></div>
+      <p class="tl-nota" id="tl-nota"></p>
+    </article>
+
+    <article class="card span-6">
+      <header>
+        <h2>Fechamento documental das obras concluídas</h2>
+        <p class="desc">SIT, NAP, As Built e Data Book · situação lida automaticamente da coluna Observações</p>
+      </header>
+      <div class="destaque" id="doc-destaque"></div>
+      <ul class="legenda" id="leg-doc"></ul>
+      <div class="barras" id="graf-doc"></div>
+      <div class="doc-antigas" id="doc-antigas"></div>
+    </article>
+
+    <article class="card span-3">
+      <header>
+        <h2>Contratadas</h2>
+        <p class="desc">Obras por empresa · clique para filtrar</p>
+      </header>
+      <div class="barras" id="graf-empresas"></div>
+    </article>
+
+    <article class="card span-3">
+      <header>
+        <h2>Gestores Vale</h2>
+        <p class="desc">Obras por gestor · clique para filtrar</p>
+      </header>
+      <div class="barras" id="graf-gestores"></div>
+    </article>
+
+    <article class="card span-12" id="card-lista">
+      <div class="tabela-topo">
+        <header>
+          <h2>Lista de obras</h2>
+          <p class="desc" id="lista-desc"></p>
+        </header>
+        <button type="button" class="btn" id="btn-csv">Exportar lista (CSV)</button>
+      </div>
+      <div class="tabela-wrap"><table id="tabela"></table></div>
+    </article>
+
+    <article class="card span-12">
+      <details class="qualidade" id="qualidade">
+        <summary id="qualidade-tit">Qualidade da base</summary>
+        <p class="desc">Pontos encontrados na planilha que vale corrigir na origem. O painel já trata a maioria deles, mas corrigir na base evita erros em outras análises.</p>
+        <div class="avisos" id="avisos"></div>
+      </details>
+    </article>
+  </section>
+
+  <footer class="rodape">
+    <p>Fonte: planilha CONTROLE OBRAS IMPLANTAÇÃO 2026 - QUALIDADE (SharePoint Coordenação de Obras Civis). Apenas abas visíveis são consideradas.</p>
+    <p>Posição dos sites aproximada (centro operacional de cada mina). Limites municipais: IBGE. Mapas de fundo online: © OpenStreetMap, CARTO e Esri, quando houver acesso à internet.</p>
+    <p>Prazos calculados em relação à data de hoje no computador de quem abre o painel.</p>
+  </footer>
+</main>
+
+<div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+<div class="toast" id="toast" role="status" hidden></div>
+<div class="soltar" id="soltar" hidden>Solte a planilha .xlsx para atualizar o painel</div>
+
+<script>/*{{LEAFLET_JS}}*/</script>
+<script>/*{{DADOS}}*/</script>
+<script>/*{{JS}}*/</script>
+</body>
+</html>
