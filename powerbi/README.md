@@ -26,9 +26,11 @@ O projeto tem:
 
 - **Modelo semântico** (`model.bim`): tabela `Obras` lida do SharePoint com `SharePoint.Files` (acha a planilha pelo nome, em qualquer pasta do site), tabela `Sites` com as coordenadas, parâmetros `SiteSharePoint` e `NomeArquivo`, colunas de prazo e as medidas da seção 3.
 - **Relatório** (formato PBIR), páginas de 1280 × 720 com o tema Vale:
-  - *Visão geral*: filtros sincronizados entre as páginas, cartões, mapa Azure Maps (bolha por site, fatias emergencial/não emergencial), obras por site e status, e radar de prazos.
+  - *Visão geral*: filtros sincronizados entre as páginas, cartões, mapa (bolhas por site sobre uma imagem da região: vermelha = emergenciais, verde = não emergenciais, tamanho = nº de obras), obras por site e status, e radar de prazos.
   - *Prazos e documentação*: conclusões por mês, fechamento documental por site, concluídas há mais tempo sem documentação aprovada, contratadas e gestores.
   - *Lista de obras*: tabela completa.
+
+O mapa padrão é um gráfico de dispersão (longitude × latitude) com a imagem dos limites municipais no fundo, gerada pelo próprio script na extensão exata dos eixos. Ele não depende do Azure Maps, que costuma vir desabilitado nos locatários corporativos. Se o administrador liberar o Azure Maps, gere com `--mapa azure` para usar o visual nativo (zoom e satélite).
 
 Para abrir: extraia a pasta, abra o `.pbip` no Power BI Desktop (junho de 2025 ou mais recente) e clique em *Atualizar*. O projeto não guarda dados; na primeira atualização o Power BI pede a conta da organização para o SharePoint. Se o site tiver muitos arquivos e a atualização ficar lenta, troque `SharePoint.Files` por `Web.Contents` com o caminho direto do arquivo.
 

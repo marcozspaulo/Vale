@@ -12,6 +12,7 @@ Uso:
 
 import argparse
 import json
+import math
 import shutil
 import uuid
 from pathlib import Path
@@ -296,6 +297,12 @@ RETURN
         "Vence em até 30 dias", IF ( faltam = 0, "vence hoje", "vence em " & FORMAT ( faltam, "0" ) & " dias" )
     )""", None),
     ("Dias sem doc. aprovada", "MAX ( Obras[Dias com pendência documental] )", "0"),
+    # posição das bolhas no mapa de imagem: emergenciais um pouco à direita, não emergenciais à esquerda
+    ("Latitude no mapa", "IF ( NOT ISBLANK ( [Qtd Obras] ), AVERAGE ( Sites[Latitude] ) )", "0.0000"),
+    ("Longitude no mapa", """
+VAR deslocamento = SWITCH ( SELECTEDVALUE ( Obras[Emergencial] ), "Sim", 0.014, "Não", -0.014, 0 )
+RETURN
+    IF ( NOT ISBLANK ( [Qtd Obras] ), AVERAGE ( Sites[Longitude] ) + deslocamento )""", "0.0000"),
 ]
 
 
@@ -380,6 +387,112 @@ def modelo(site, arquivo):
             ],
         },
     }
+
+
+# =====================================================================================
+# Mapa sem Azure Maps: gráfico de dispersão (longitude x latitude) sobre uma imagem da região
+# =====================================================================================
+
+MAPA_POS = (16, 228, 480, 476)  # x, y, largura e altura do visual na página
+MAPA_ASPECTO = 1.08             # largura/altura estimada da área de plotagem desse visual
+_lat = [s[3] for s in SITES]
+_lon = [s[4] for s in SITES]
+_meia_lat = (max(_lat) - min(_lat)) / 2 + 0.0675
+_centro_lat = (max(_lat) + min(_lat)) / 2
+_meia_lon = MAPA_ASPECTO * _meia_lat / math.cos(math.radians(_centro_lat))
+_centro_lon = (max(_lon) + min(_lon)) / 2
+MAPA_LAT = (round(_centro_lat - _meia_lat, 5), round(_centro_lat + _meia_lat, 5))
+MAPA_LON = (round(_centro_lon - _meia_lon, 5), round(_centro_lon + _meia_lon, 5))
+IMAGEM_MAPA = "MapaRegiaoParaopeba20261026.png"
+GEO = Path(__file__).resolve().parent.parent / "painel" / "geo" / "municipios.json"
+DESLOCAMENTO = 0.014         # graus de longitude entre a bolha emergencial e a não emergencial do mesmo site
+LADO_ROTULO = {"mutuca": 1, "cpx": -1, "marazul": 1, "feijao": 0, "fabrica": -1, "viga": 1}
+CINZA_MEDIO = "#BCBEC0"
+
+
+def imagem_mapa(destino):
+    """Desenha os limites municipais (IBGE), os nomes dos sites e a legenda na extensão exata dos eixos.
+
+    A imagem tem o dobro do tamanho em que aparece no relatório (E = 2), para ficar nítida."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    E, k = 2, 2                      # pixels da imagem por pixel de tela; superamostragem do desenho
+    largura, altura = 460 * E, round(460 * E / MAPA_ASPECTO)
+    W, H = largura * k, altura * k
+    u = E * k                        # 1 pixel de tela no desenho
+    im = Image.new("RGB", (W, H), BRANCO)
+    d = ImageDraw.Draw(im)
+    fontes = "/usr/share/fonts/truetype/liberation/"
+    f_mun = ImageFont.truetype(fontes + "LiberationSans-Regular.ttf", 10 * u)
+    f_site = ImageFont.truetype(fontes + "LiberationSans-Bold.ttf", 13 * u)
+    f_leg = ImageFont.truetype(fontes + "LiberationSans-Regular.ttf", 11 * u)
+
+    def xy(lon, lat):
+        return ((lon - MAPA_LON[0]) / (MAPA_LON[1] - MAPA_LON[0]) * W,
+                (MAPA_LAT[1] - lat) / (MAPA_LAT[1] - MAPA_LAT[0]) * H)
+
+    geo = json.loads(GEO.read_text(encoding="utf-8"))
+    com_site = {s[2] for s in SITES}
+    for f in geo["features"]:
+        cor_ = CINZA_CLARO if f["properties"]["nome"] in com_site else BRANCO
+        for poligono in f["geometry"]["coordinates"]:
+            d.polygon([xy(*p) for p in poligono[0]], fill=cor_)
+    for f in geo["features"]:
+        for poligono in f["geometry"]["coordinates"]:
+            pts = [xy(*p) for p in poligono[0]]
+            d.line(pts + [pts[0]], fill=CINZA_MEDIO, width=u, joint="curve")
+
+    # nomes dos sites, afastados o bastante para as bolhas do Power BI não cobrirem
+    desloc = DESLOCAMENTO / (MAPA_LON[1] - MAPA_LON[0]) * W
+    caixas = []
+    for sid, nome, _, lat, lon, _ in SITES:
+        x, y = xy(lon, lat)
+        d.ellipse([x - 2 * u, y - 2 * u, x + 2 * u, y + 2 * u], fill=TEXTO)
+        lado = LADO_ROTULO.get(sid, 1)  # 1 direita, -1 esquerda, 0 abaixo
+        if lado == 0:
+            ancora, tx, ty = "mt", x, y + 18 * u
+        else:
+            ancora, tx, ty = ("lm" if lado > 0 else "rm"), x + lado * (desloc + 26 * u), y
+        d.text((tx, ty), nome, font=f_site, fill=VERDE, anchor=ancora, stroke_width=3 * u, stroke_fill=BRANCO)
+        caixas.append(d.textbbox((tx, ty), nome, font=f_site, anchor=ancora))
+        caixas.append((x - desloc - 22 * u, y - 22 * u, x + desloc + 22 * u, y + 22 * u))  # área das bolhas
+
+    # nomes dos municípios, sem cobrir sites nem bolhas
+    for f in geo["features"]:
+        lon, lat = f["properties"]["rotulo"]
+        x, y = xy(lon, lat)
+        if not (40 * u < x < W - 40 * u and 12 * u < y < H - 12 * u):
+            continue
+        caixa = d.textbbox((x, y), f["properties"]["nome"], font=f_mun, anchor="mm")
+        folga = 4 * u
+        if any(caixa[0] < c[2] + folga and c[0] < caixa[2] + folga and caixa[1] < c[3] + folga and c[1] < caixa[3] + folga
+               for c in caixas):
+            continue
+        d.text((x, y), f["properties"]["nome"], font=f_mun, fill=TEXTO, anchor="mm", stroke_width=2 * u, stroke_fill=BRANCO)
+        caixas.append(caixa)
+
+    # legenda (canto inferior esquerdo) e escala (canto inferior direito)
+    m = 8 * u
+    linhas = [("Emergencial", EMERG["Sim"]), ("Não emergencial", EMERG["Não"]), ("Tamanho = nº de obras", None)]
+    alt_linha = 16 * u
+    caixa_leg = [m, H - m - alt_linha * len(linhas) - 8 * u, m + 140 * u, H - m]
+    d.rounded_rectangle(caixa_leg, radius=4 * u, fill=BRANCO, outline=CINZA_MEDIO, width=u)
+    for i, (rot, cor_) in enumerate(linhas):
+        cy = caixa_leg[1] + 4 * u + alt_linha * i + alt_linha / 2
+        x0 = caixa_leg[0] + 8 * u
+        if cor_:
+            d.ellipse([x0, cy - 4 * u, x0 + 8 * u, cy + 4 * u], fill=cor_)
+            x0 += 13 * u
+        d.text((x0, cy), rot, font=f_leg, fill=TEXTO, anchor="lm")
+    km10 = 10 / (111.32 * math.cos(math.radians(sum(MAPA_LAT) / 2))) / (MAPA_LON[1] - MAPA_LON[0]) * W
+    x1, y1 = W - m - 4 * u, H - m - 4 * u
+    d.line([(x1 - km10, y1), (x1, y1)], fill=TEXTO, width=u)
+    for xx in (x1 - km10, x1):
+        d.line([(xx, y1 - 4 * u), (xx, y1)], fill=TEXTO, width=u)
+    d.text((x1 - km10 / 2, y1 - 6 * u), "10 km", font=f_leg, fill=TEXTO, anchor="mb", stroke_width=2 * u, stroke_fill=BRANCO)
+
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    im.resize((largura, altura), Image.LANCZOS).save(destino, optimize=True)
 
 
 # =====================================================================================
@@ -512,7 +625,51 @@ def cabecalho(p, subtitulo):
               vco=moldura(), sync=grupo)
 
 
-def pagina_visao_geral():
+def visual_mapa(p, tipo_mapa):
+    x, y, w, h = MAPA_POS
+    if tipo_mapa == "azure":
+        p.add("mapa_sites", x, y, w, h, "azureMap",
+              consulta=consulta({
+                  "Category": [proj(col("Sites", "Site"), ativo=True)],
+                  "Series": [proj(col("Obras", "Emergencial"))],
+                  "Size": [proj(med("Qtd Obras"))],
+                  "Y": [proj(col("Sites", "Latitude"))],
+                  "X": [proj(col("Sites", "Longitude"))],
+                  "Tooltips": [proj(med("Emergenciais")), proj(med("Não emergenciais")), proj(med("Atrasadas"))],
+              }),
+              objetos={"dataPoint": cores_por_valor("Obras", "Emergencial", EMERG)},
+              vco=moldura("Mapa de obras por site · tamanho = nº de obras · vermelho = emergencial"))
+        return
+    eixo = lambda ini_, fim_: [{"properties": {
+        "show": booleano(False), "start": num(ini_), "end": num(fim_),
+        "gridlineShow": booleano(False), "showAxisTitle": booleano(False)}}]
+    p.add("mapa_sites", x, y, w, h, "scatterChart",
+          consulta=consulta({
+              "Category": [proj(col("Sites", "Site"), ativo=True)],
+              "Series": [proj(col("Obras", "Emergencial"))],
+              "X": [proj(med("Longitude no mapa"), nome="Longitude")],
+              "Y": [proj(med("Latitude no mapa"), nome="Latitude")],
+              "Size": [proj(med("Qtd Obras"))],
+              "Tooltips": [proj(med("Atrasadas"))],
+          }),
+          objetos={
+              "dataPoint": cores_por_valor("Obras", "Emergencial", EMERG),
+              "legend": [{"properties": {"show": booleano(False)}}],
+              "categoryAxis": eixo(*MAPA_LON),
+              "valueAxis": eixo(*MAPA_LAT),
+              "categoryLabels": [{"properties": {"show": booleano(False)}}],
+              "bubbles": [{"properties": {"bubbleSize": lit("-15L")}}],
+              "plotArea": [{"properties": {"transparency": num(0), "image": {"image": {
+                  "name": txt("Mapa da região"),
+                  "url": {"expr": {"ResourcePackageItem": {
+                      "PackageName": "RegisteredResources", "PackageType": 1, "ItemName": IMAGEM_MAPA}}},
+                  "scaling": txt("Fit"),
+              }}}}],
+          },
+          vco=moldura("Mapa de obras por site · tamanho da bolha = nº de obras"))
+
+
+def pagina_visao_geral(tipo_mapa):
     p = Pagina("visao_geral", "Visão geral")
     cabecalho(p, "Controle de qualidade · Complexo Paraopeba · Visão geral")
     cards = ["Total de obras", "Emergenciais", "Atrasadas", "Vencem em 30 dias", "Concluídas sem doc. aprovada"]
@@ -526,18 +683,10 @@ def pagina_visao_geral():
                                                      "fontSize": num(10), "fontFamily": txt(FONTE)}}],
               },
               vco=moldura())
-    p.add("mapa_sites", 16, 228, 760, 476, "azureMap",
-          consulta=consulta({
-              "Category": [proj(col("Sites", "Site"), ativo=True)],
-              "Series": [proj(col("Obras", "Emergencial"))],
-              "Size": [proj(med("Qtd Obras"))],
-              "Y": [proj(col("Sites", "Latitude"))],
-              "X": [proj(col("Sites", "Longitude"))],
-              "Tooltips": [proj(med("Emergenciais")), proj(med("Não emergenciais")), proj(med("Atrasadas"))],
-          }),
-          objetos={"dataPoint": cores_por_valor("Obras", "Emergencial", EMERG)},
-          vco=moldura("Mapa de obras por site · tamanho = nº de obras · vermelho = emergencial"))
-    p.add("obras_por_site", 784, 228, 480, 220, "barChart",
+    visual_mapa(p, tipo_mapa)
+    direita = MAPA_POS[0] + MAPA_POS[2] + 8
+    larg_dir = 1280 - 16 - direita
+    p.add("obras_por_site", direita, 228, larg_dir, 220, "barChart",
           consulta=consulta({
               "Category": [proj(col("Sites", "Site"), ativo=True)],
               "Series": [proj(col("Obras", "Status"))],
@@ -546,10 +695,10 @@ def pagina_visao_geral():
           objetos={"dataPoint": cores_por_valor("Obras", "Status", STATUS),
                    "labels": [{"properties": {"show": booleano(True)}}]},
           vco=moldura("Obras por site e status"))
-    p.add("radar_prazos", 784, 456, 480, 248, "tableEx",
+    p.add("radar_prazos", direita, 456, larg_dir, 248, "tableEx",
           consulta=consulta({"Values": [
-              proj(col("Obras", "TAP")), proj(col("Obras", "Projeto")), proj(col("Sites", "Site")),
-              proj(col("Obras", "Emergencial")), proj(col("Obras", "Data de conclusão")), proj(med("Prazo")),
+              proj(col("Obras", "TAP")), proj(col("Sites", "Site")), proj(med("Prazo")),
+              proj(col("Obras", "Data de conclusão")), proj(col("Obras", "Emergencial")), proj(col("Obras", "Projeto")),
           ]}, ordenar=[(col("Obras", "Data de conclusão"), "Ascending")]),
           objetos={"total": [{"properties": {"totals": booleano(False)}}]},
           vco=moldura("Radar de prazos · atrasadas e vencendo em 30 dias"))
@@ -645,7 +794,7 @@ def escrever(caminho, dados):
     caminho.write_text(json.dumps(dados, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def gerar(saida, site, arquivo):
+def gerar(saida, site, arquivo, tipo_mapa="imagem"):
     raiz = Path(saida)
     if raiz.exists():
         shutil.rmtree(raiz)
@@ -682,6 +831,10 @@ def gerar(saida, site, arquivo):
     base = dict(tema, name="CY24SU10")
     escrever(relatorio / "StaticResources" / "SharedResources" / "BaseThemes" / "CY24SU10.json", base)
     escrever(relatorio / "StaticResources" / "RegisteredResources" / "TemaVale.json", tema)
+    registrados = [{"name": "TemaVale.json", "path": "TemaVale.json", "type": "CustomTheme"}]
+    if tipo_mapa == "imagem":
+        imagem_mapa(relatorio / "StaticResources" / "RegisteredResources" / IMAGEM_MAPA)
+        registrados.append({"name": IMAGEM_MAPA, "path": IMAGEM_MAPA, "type": "Image"})
     escrever(relatorio / "definition" / "report.json", {
         "$schema": S_REPORT,
         "themeCollection": {
@@ -692,8 +845,7 @@ def gerar(saida, site, arquivo):
         "resourcePackages": [
             {"name": "SharedResources", "type": "SharedResources",
              "items": [{"name": "CY24SU10", "path": "BaseThemes/CY24SU10.json", "type": "BaseTheme"}]},
-            {"name": "RegisteredResources", "type": "RegisteredResources",
-             "items": [{"name": "TemaVale.json", "path": "TemaVale.json", "type": "CustomTheme"}]},
+            {"name": "RegisteredResources", "type": "RegisteredResources", "items": registrados},
         ],
         "settings": {
             "useStylableVisualContainerHeader": True,
@@ -703,7 +855,7 @@ def gerar(saida, site, arquivo):
             "useDefaultAggregateDisplayName": True,
         },
     })
-    paginas = [pagina_visao_geral(), pagina_prazos_documentacao(), pagina_lista()]
+    paginas = [pagina_visao_geral(tipo_mapa), pagina_prazos_documentacao(), pagina_lista()]
     escrever(relatorio / "definition" / "pages" / "pages.json", {
         "$schema": S_PAGES, "pageOrder": [p.nome for p in paginas], "activePageName": paginas[0].nome,
     })
@@ -726,8 +878,11 @@ def main():
                     help="endereço do site do SharePoint onde está a planilha")
     ap.add_argument("--arquivo", default="CONTROLE OBRAS IMPLANTAÇÃO 2026 - QUALIDADE.xlsx",
                     help="nome exato do arquivo .xlsx no SharePoint")
+    ap.add_argument("--mapa", choices=["imagem", "azure"], default="imagem",
+                    help="imagem: gráfico de bolhas sobre mapa desenhado (não depende de liberação); "
+                         "azure: visual Azure Maps (precisa estar habilitado pelo administrador do Power BI)")
     a = ap.parse_args()
-    raiz = gerar(a.saida, a.site, a.arquivo)
+    raiz = gerar(a.saida, a.site, a.arquivo, a.mapa)
     print(f"Projeto gerado em {raiz}")
 
 

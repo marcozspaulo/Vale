@@ -87,6 +87,15 @@ def validar_campos(raiz, bim):
             if not ok:
                 erros += 1
                 print(f"  CAMPO inexistente em {arq.parent.name}: {tipo} {tabela}[{prop}]")
+    # imagens referenciadas precisam estar registradas no report.json e existir na pasta
+    relatorio = next(Path(raiz).rglob("report.json"))
+    registrados = {i["name"] for pk in carregar(relatorio).get("resourcePackages", []) for i in pk["items"]}
+    for arq in sorted(Path(raiz).rglob("visual.json")):
+        for item in re.findall(r'"ItemName": "([^"]+)"', arq.read_text(encoding="utf-8")):
+            pasta = relatorio.parent.parent / "StaticResources" / "RegisteredResources"
+            if item not in registrados or not (pasta / item).exists():
+                erros += 1
+                print(f"  IMAGEM {item} usada em {arq.parent.name} não está registrada ou não existe")
     nomes_paginas = [carregar(p)["name"] for p in Path(raiz).rglob("page.json")]
     for p in Path(raiz).rglob("page.json"):
         visuais = [carregar(v)["name"] for v in (p.parent / "visuals").glob("*/visual.json")]
