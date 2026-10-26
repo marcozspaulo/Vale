@@ -1,0 +1,4 @@
+node_modules/
+# Dados internos: a planilha e o HTML gerado (que embute a planilha) não vão para o repositório
+painel/dados/*.xlsx
+painel/painel-obras-implantacao-*.html
