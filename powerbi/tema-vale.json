@@ -1,0 +1,21 @@
+{
+  "name": "Vale",
+  "dataColors": ["#00948D", "#E0A619", "#0ABB98", "#C0305E", "#3CB5E5", "#EE6F16"],
+  "background": "#FFFFFF",
+  "backgroundLight": "#E6E7E8",
+  "foreground": "#007E7A",
+  "foregroundNeutralSecondary": "#555555",
+  "tableAccent": "#007E7A",
+  "good": "#2FB05A",
+  "neutral": "#E0A619",
+  "bad": "#B42318",
+  "minimum": "#9DE4D6",
+  "center": "#00948D",
+  "maximum": "#034944",
+  "textClasses": {
+    "title": { "fontFace": "Vale Sans, Arial", "color": "#007E7A", "fontSize": 14 },
+    "label": { "fontFace": "Vale Sans, Arial", "color": "#555555", "fontSize": 10 },
+    "callout": { "fontFace": "Vale Sans, Arial", "color": "#007E7A", "fontSize": 34 },
+    "header": { "fontFace": "Vale Sans, Arial", "color": "#007E7A", "fontSize": 12 }
+  }
+}

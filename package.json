@@ -1,0 +1,13 @@
+{
+  "name": "painel-obras-implantacao",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Painel de obras de implantação 2026 (qualidade) — Complexo Paraopeba",
+  "scripts": {
+    "build": "node painel/build.mjs"
+  },
+  "devDependencies": {
+    "@microsoft/powerquery-parser": "^4.0.1",
+    "leaflet": "1.9.4"
+  }
+}
