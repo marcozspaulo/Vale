@@ -44,5 +44,5 @@ painel/
   scripts/        geração do recorte de municípios
   dados/          coloque aqui a planilha a embutir no HTML (fora do Git)
   build.mjs       junta tudo em um único arquivo
-powerbi/          kit para montar a mesma visão no Power BI
+powerbi/          gerador do projeto Power BI (.pbip) e kit para montar a mesma visão à mão
 ```

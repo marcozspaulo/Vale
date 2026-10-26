@@ -6,8 +6,31 @@ Arquivos:
 
 | Arquivo | Para quê |
 |---|---|
-| `consultas-power-query.pq` | Consultas `Sites`, `ApelidosSite` e `Obras` (leitura das abas, limpeza e regra da situação documental) |
+| `gerar_pbip.py` | Gera o projeto pronto do Power BI (`.pbip`): modelo, medidas e as três páginas do relatório |
+| `validar_pbip.py`, `validar_m.mjs` | Conferem o projeto gerado: esquemas oficiais, campos dos visuais, DAX e sintaxe do Power Query |
+| `consultas-power-query.pq` | As mesmas consultas, para quem preferir montar o relatório à mão |
 | `tema-vale.json` | Tema com as cores e a tipografia do guia de marca (Exibir > Temas > Procurar temas) |
+
+## Projeto pronto (.pbip)
+
+```bash
+python3 powerbi/gerar_pbip.py --saida dist/pbip \
+    --site https://<empresa>.sharepoint.com/sites/<site> \
+    --arquivo "CONTROLE OBRAS IMPLANTAÇÃO 2026 - QUALIDADE.xlsx"
+
+# conferência (precisa de: pip install jsonschema; npm install; clone de github.com/microsoft/json-schemas)
+python3 powerbi/validar_pbip.py dist/pbip --esquemas ../json-schemas
+```
+
+O projeto tem:
+
+- **Modelo semântico** (`model.bim`): tabela `Obras` lida do SharePoint com `SharePoint.Files` (acha a planilha pelo nome, em qualquer pasta do site), tabela `Sites` com as coordenadas, parâmetros `SiteSharePoint` e `NomeArquivo`, colunas de prazo e as medidas da seção 3.
+- **Relatório** (formato PBIR), páginas de 1280 × 720 com o tema Vale:
+  - *Visão geral*: filtros sincronizados entre as páginas, cartões, mapa Azure Maps (bolha por site, fatias emergencial/não emergencial), obras por site e status, e radar de prazos.
+  - *Prazos e documentação*: conclusões por mês, fechamento documental por site, concluídas há mais tempo sem documentação aprovada, contratadas e gestores.
+  - *Lista de obras*: tabela completa.
+
+Para abrir: extraia a pasta, abra o `.pbip` no Power BI Desktop (junho de 2025 ou mais recente) e clique em *Atualizar*. O projeto não guarda dados; na primeira atualização o Power BI pede a conta da organização para o SharePoint. Se o site tiver muitos arquivos e a atualização ficar lenta, troque `SharePoint.Files` por `Web.Contents` com o caminho direto do arquivo.
 
 ## 1. Dados
 
